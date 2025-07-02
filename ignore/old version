@@ -1,0 +1,1007 @@
+
+
+
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+#define STR_LEN 1024
+#define TOK 512
+
+
+typedef enum
+{
+    NODE_PRINT,
+    NODE_ADD,
+    NODE_SUB,
+    NODE_INT,
+    NODE_TIMES,
+    NODE_END_TIMES,
+    NODE_CONSOL
+
+
+} NodeType;
+
+typedef struct
+ {
+    NodeType type;
+    char name[STR_LEN];
+    char value[STR_LEN];
+    char extra[STR_LEN];
+    int num;
+} ASTNode;
+
+
+
+typedef enum 
+{
+    INT,   //0
+    PRINT, //1
+    VALUE, //2
+    END,   //3
+    NUM,   //4
+    STR,   //5
+    EQUAL, //6
+    PLUS,  //7
+    MINUS,  //8
+    TIMES, //9
+    OPEN_BRACE,//10
+    CLOSE_BRACE,//11
+    CONSOL//12
+
+} TokenType;
+
+typedef struct 
+{
+    TokenType type;
+    char value[STR_LEN];
+    int num_value;
+} Token;
+
+int str_to_int(const char* str)
+ {
+    int result = 0;
+
+    while (*str >= '0' && *str <= '9') 
+    {
+        result = result * 10 + (*str - '0');
+        str++;
+    }
+
+    return result;
+}
+
+void error_print(int num)
+{
+    //1 синтаксис
+    //2 переполнение
+    printf("\n ERROR! %d \n", num);
+
+
+    abort();
+}
+
+
+void clear_buffer(char bufer[STR_LEN])
+{
+    for(int i = 0; i <STR; i++)
+    {
+    bufer[i] = 0;
+    }
+}
+
+int is_number(const char *str) 
+{
+    int i = 0;
+    if (str[0] == '-') 
+        i++;
+
+    for (; str[i] != '\0'; i++) 
+    {
+        if (str[i] < '0' || str[i] > '9')
+            return 0;
+    }
+    return (i > 0);
+}
+
+void add_buffer(const char *text, char name_out[STR_LEN])
+{
+
+    char line[STR_LEN];
+
+    FILE *out = fopen(name_out, "r");
+    FILE *temp = fopen("add_buffer.temp", "w");
+
+
+    int inserted = 0;
+
+    while (fgets(line, sizeof(line), out)) 
+    {
+        fputs(line, temp);
+
+        if (!inserted && strstr(line, "section .bss"))
+        {
+            fputs(text, temp);
+            inserted = 1;
+        }
+    }
+
+    fclose(out);
+    fclose(temp);
+
+    FILE *out_ = fopen(name_out, "w");
+    FILE *temp_ = fopen("add_buffer.temp", "r");
+
+    while (fgets(line, sizeof(line), temp_)) 
+    {
+        fputs(line, out_);
+    }
+
+    fclose(out_);
+    fclose(temp_);
+}
+
+
+void generate_code(ASTNode *nodes, FILE *out, char name_out[STR_LEN]) 
+{
+
+
+    int extranum = 0;
+    int i = 0;
+    char help_bufer[STR_LEN];
+    switch(nodes->type) 
+    { 
+
+        
+case NODE_PRINT:
+            if(nodes->extra[0] == 0)
+            {
+            while(nodes->name[i] != 0)
+            {
+            fprintf(out, "mov byte [OUTPUT_ + %d], '%c'\n", i, nodes->name[i]);
+            i++;
+            }
+            }
+            else if(nodes->extra[0] == 1)
+            {
+
+
+             fprintf(out,
+                    "PRININT_%d:           \n"
+              "mov rsi, OUTPUT_            \n"
+              "call clear_bufer            \n"
+
+              "cmp byte[%s], 105           \n"
+              "jne .skip_%d                \n"
+
+             "cmp byte[%s + 1], '-'        \n"
+             "jne .plus_%d                 \n"
+             "mov byte [OUTPUT_], '-'      \n"
+             "mov rdi, OUTPUT_ + 1         \n"
+             "jmp .go_%d                   \n"
+
+             ".plus_%d:                    \n"
+             "mov rdi, OUTPUT_             \n"
+
+             ".go_%d:                      \n"
+             "mov eax, dword [%s + 2]      \n"
+             "call num_to_str              \n"
+
+              ".skip_%d:                   \n",
+             nodes->extra[1],              // PRININT_<id>:
+             nodes->name, nodes->extra[1], // cmp [%s], 105 / jne .skip_<id>
+             nodes->name, nodes->extra[1], // cmp [%s+1], '-' / jne .plus_<id>
+             nodes->extra[1],              // jmp .go_<id>
+             nodes->extra[1],              // .plus_<id>:
+             nodes->extra[1],              // .go_<id>:
+             nodes->name,                  // mov eax, [%s + 2]
+             nodes->extra[1]               // .skip_<id>
+ );
+
+
+      
+            }
+
+            fprintf(out,                 
+                "mov rsi, OUTPUT_            \n"
+                "mov rdx, OUTPUT__len        \n"
+                "call print                  \n"
+                "mov rsi, OUTPUT_            \n"
+                "call clear_bufer            \n");
+
+           
+            break;
+
+case NODE_INT:
+
+
+
+    char temp_name[101];
+    strncpy(temp_name, nodes->name, 100);
+    temp_name[100] = 0;
+
+    snprintf(help_bufer, sizeof(help_bufer), "%s: resb 8\n", temp_name);
+
+
+            fclose(out);
+            add_buffer(help_bufer, name_out);
+            out = fopen(name_out, "a");
+
+
+
+
+            if (nodes->value[1] != 0) 
+            {
+
+            fprintf(out, "mov byte [%s], %d\n", nodes->name, nodes->value[0]);
+            fprintf(out, "mov byte [%s+1], '%c'\n", nodes->name, nodes->value[1]);
+            fprintf(out, "mov eax, %d\n", nodes->num);
+            fprintf(out, "mov dword [%s+2], eax\n", nodes->name);
+
+
+           
+            }
+            break;
+
+
+case EQUAL:
+
+ printf("\n\n%d", nodes->extra[1]);
+            printf("/%s/", nodes->name);
+            printf("/%d/", nodes->extra[0]);
+            printf("/%d/", nodes->num);
+            printf("/%s/\n\n", nodes->value);
+    if(strcmp(nodes->name, nodes->value) != 0)
+    {
+                fprintf(out, 
+                "EQUAL_%d:                           \n"
+                "mov al, byte[%s] \n"
+                "cmp al, byte[%s]              \n"
+                "jne .skip_%d                         \n"
+                "mov rsi, %s                        \n"
+                "call clear_bufer                   \n"
+                "mov rcx, 0                        \n"
+                ".loop_%d:                            \n"
+                "mov al, byte[%s + rcx] \n"
+                "mov byte[%s + rcx], al              \n"
+                "cmp byte[%s + rcx], 0                     \n"
+                "je .skip_%d                         \n"
+                "inc rcx                             \n"
+                "jmp .loop_%d                        \n"
+                ".skip_%d:                           \n"
+                , nodes->extra[1], nodes->name, nodes->value, nodes->extra[1], nodes->name, nodes->extra[1], nodes->value, nodes->name, nodes->value, nodes->extra[1], nodes->extra[1], nodes->extra[1]
+                );
+    }
+
+    break;
+
+case PLUS:
+
+
+
+
+    int id = nodes->extra[1];
+    char *a = nodes->name;
+    char *b = nodes->value;
+
+
+
+    fprintf(out,
+    "PLUS_%d:\n"
+    "    mov al, byte[%s]\n"
+    "    cmp al, byte[%s]\n"
+    "    jne .skip_%d\n",
+    id, a, b, id);
+
+
+
+    fprintf(out,
+    "    cmp byte[%s + 1], '+'\n"
+    "    je .plus_one%d\n"
+    "    cmp byte[%s + 1], '-'\n"
+    "    je .minus_one%d\n"
+    "    jmp .skip_%d\n",
+    a, id, a, id, id);
+
+
+    /////////////////////////////
+
+
+    fprintf(out,
+    ".minus_one%d:\n"
+                            
+    "cmp byte[%s + 1], '+'\n"
+    "    je .minus_plus%d\n"
+    "    cmp byte[%s + 1], '-'\n"
+    "    je .plus_%d\n"
+    "    jmp .skip_%d\n",
+
+    id, b, id, b, id, id);
+
+            fprintf(out,
+    ".minus_plus%d:\n"
+
+    "mov eax, dword [%s + 2]\n"
+    "mov ebx, dword [%s + 2]\n"
+    "cmp eax, ebx\n"
+    "jg .Bm%d\n"
+    "jl .Mm%d\n"
+    "je .Bm%d\n"
+
+    "jmp .skip_%d\n",
+
+    id, a, b, id, id, id, id);
+               
+    fprintf(out,
+
+    ".Bm%d:\n"
+
+
+    "mov eax, dword[%s + 2]\n"
+    "sub dword[%s + 2], eax\n"
+    "jmp .skip_%d\n",
+
+    id, b, a, id);
+
+    fprintf(out,
+
+    ".Mm%d:\n"
+
+    "mov eax, dword[%s + 2]\n"
+    "mov ebx, dword[%s + 2]\n"
+    "mov dword[%s + 2], ebx \n"
+    "sub dword[%s + 2], eax, \n"
+    "mov byte[%s + 1], '+'\n"
+    "jmp .skip_%d\n",
+
+    id, a, b, a, a, a, id);
+
+    ///
+    ///////////////////////////
+
+    fprintf(out,
+    ".plus_one%d:\n"
+        "cmp byte[%s + 1], '+'\n"
+    "    je .plus_%d\n"
+    "    cmp byte[%s + 1], '-'\n"
+    "    je .plus_minus%d\n"
+    "    jmp .skip_%d\n",
+    id, b, id, b, id, id);
+
+            fprintf(out,
+    ".plus_minus%d:\n"
+
+    "mov eax, dword [%s + 2]\n"
+    "mov ebx, dword [%s + 2]\n"
+    "cmp eax, ebx\n"
+    "jg .Bp%d\n"
+    "jl .Mp%d\n"
+    "je .Bp%d\n"
+
+    "jmp .skip_%d\n",
+
+    id, a, b, id, id, id, id);
+               
+    fprintf(out,
+
+    ".Bp%d:\n"
+
+
+    "mov eax, dword[%s + 2]\n"
+    "sub dword[%s + 2], eax\n"
+    "jmp .skip_%d\n",
+
+    id, b, a, id);
+
+    fprintf(out,
+
+    ".Mp%d:\n"
+
+    "mov eax, dword[%s + 2]\n"
+    "mov ebx, dword[%s + 2]\n"
+    "mov dword[%s + 2], ebx \n"
+    "sub dword[%s + 2], eax, \n"
+    "mov byte[%s + 1], '-'\n"
+    "jmp .skip_%d\n",
+
+    id, a, b, a, a, a, id);
+
+    ////////////////////////////
+
+    fprintf(out,
+    ".plus_%d:\n"
+    "    mov eax, dword[%s + 2]\n"
+    "    add dword[%s + 2], eax\n"
+    "    jmp .skip_%d\n",
+    id, b, a, id);
+
+
+    fprintf(out, 
+    ".skip_%d:\n", id);
+
+
+    
+
+    break;
+
+
+case NODE_TIMES:
+
+    fprintf(out,
+    "mov cx, %d\n"
+    "\nTIMES_%d%d:\n"
+    "push cx\n",
+    nodes->num, nodes->extra[1], nodes->extra[2]);
+
+    break;
+
+
+
+case NODE_END_TIMES:
+
+    fprintf(out,
+    "pop cx\n"
+    "dec cx\n"
+    "cmp cx, 0\n"
+    "je sk_%d%d\n"
+    "\njmp TIMES_%d%d\n"
+    "sk_%d%d:\n",
+    nodes->extra[1],nodes->extra[2],nodes->extra[1],nodes->extra[2], nodes->extra[1],nodes->extra[2]);
+break;
+
+}
+
+
+}
+
+
+
+
+
+
+
+
+
+
+int main()////////////////////////////////////////////////////////////////////////////////
+{  
+
+
+    ASTNode nodes[256];
+    int node_count = 0;
+
+    Token token_buf[TOK];
+    int token_count = 0;
+    int current_line = 0;
+    int num = 0;
+    int loop_num = 0;
+    int close_brace = 0;
+    int open_brace = 0;
+
+
+    char name_input[STR_LEN];
+    char full_input[STR_LEN];
+    char name_out[STR_LEN];
+
+    char line[STR_LEN];
+    char buf[STR_LEN];
+    char buf2[STR_LEN];
+    char buf3[STR_LEN];
+
+
+
+    printf("\nEnter file name: ");
+
+
+    if (scanf("%s", name_input) != 1) 
+    {
+    fprintf(stderr, "\nError entering file name\n");
+    return 1;
+    }
+
+
+char temp_name[101];
+strncpy(temp_name, name_input, 100);
+temp_name[100] = 0;
+
+    snprintf(full_input, sizeof(full_input), "%s.blg", temp_name);
+
+    snprintf(name_out, sizeof(name_out), "%s.asm", temp_name);
+
+
+    FILE* input = fopen(full_input, "r");
+    if (!input)
+    {
+        printf("\nНе удалось открыть файл!\nУбедитесь что файл %s существует.\n\n", full_input);
+        return 1;
+    }
+
+    FILE* out = fopen(name_out, "w");
+    if (!out) 
+    {
+        printf("\nНе удалось создать файл %s\n", name_out);
+        return 1;
+    }
+
+
+
+    fprintf(out,
+                "BITS 64                     \n"
+                "global _start               \n"
+                "section .bss                \n"
+                "OUTPUT_: resb 64            \n"
+                "OUTPUT__len equ $ - OUTPUT_ \n"
+                "section .text               \n"
+                "_start:                     \n"
+                "jmp code                    \n"
+                "exit:                       \n"
+                "mov rax, 60                 \n"
+                "xor rdi, rdi                \n"
+                "syscall                     \n"
+                "code:                       \n"
+           );
+
+
+
+
+for(int line_num = 0; line_num < 100; line_num++)
+{
+clear_buffer(line);
+rewind(input);
+current_line = 0;
+
+while (fgets(line, sizeof(line), input)) 
+{
+if (current_line == line_num) 
+{
+
+
+
+
+        clear_buffer(buf);
+    int i = 0;
+
+   while (line[i] != '\n' && line[i] != 0) 
+   {
+
+
+
+    while (line[i] == ' ') i++;
+
+     if (line[i] == '/' && line[i + 1] == '/')
+    {
+        clear_buffer(line);
+        break;
+        
+    }
+
+    if (line[i] == ';') 
+    {
+        token_buf[token_count].type = END;
+
+        //printf("\nТокен %d: ; | Тип: %d\nValue: %s\n", token_count, token_buf[token_count].type, token_buf[token_count].value);
+        token_count++;
+        i++;
+        continue;
+    }
+
+  
+                int j = 0;
+
+                clear_buffer(buf);
+
+                if(line[i] == '"')
+                {
+                i++;
+                while (line[i] != '"') 
+                {   
+
+                    buf[j] = line[i];
+                    i++;
+                    j++;
+                    
+
+                   if(j > STR_LEN)
+                   {
+
+                   error_print(1);
+
+                   }
+                }
+
+                token_buf[token_count].type = STR;
+                strcpy(token_buf[token_count].value, buf);
+
+                 //printf("\nТокен %d: %s | Тип: %d\nValue: %s\n",token_count, buf, token_buf[token_count].type, token_buf[token_count].value);
+                token_count++;
+                i++;
+
+
+                 
+
+                clear_buffer(buf);
+              
+              continue;
+                
+                }
+                else
+                {
+                while (line[i] != ' ' && line[i] != ';' && line[i] != '\n' && line[i] != 0) 
+                {
+
+                    buf[j] = line[i];
+                    i++;
+                    j++;
+                }
+                }
+
+                buf[j] = '\0';
+                int p = 0;
+
+
+                if(strcmp(buf, "int") == 0)
+                {
+                    token_buf[token_count].type = INT;
+
+                }
+                else if(strcmp(buf, "print") == 0)
+                { 
+                    token_buf[token_count].type = PRINT;
+
+                }
+                else if(is_number(buf))//NUM
+                {
+                    int shift = 0;
+                    int len = strlen(buf);
+
+                    
+                   if(buf[0] == '-')
+                  {
+                  
+                    shift = 1;
+                  }
+                  else
+                  {
+                    shift = 2;
+                    p = 1;
+                  }
+
+             
+
+                    for (int i = len; i >= 0; i--) 
+                    {
+                       buf[i + shift] = buf[i];
+
+                    }           
+                   
+
+                   buf[i + 1] = buf[i];
+
+                  
+                   buf[0] = 'i';
+                
+                   if(p == 1)
+                   {
+                    buf[1] = '+';
+                   }
+                   else
+                   {
+                    buf[1] = '-';
+                   }
+
+                    
+                    token_buf[token_count].type = NUM;
+                    strcpy(token_buf[token_count].value, buf);
+
+                
+                      token_buf[token_count].num_value = str_to_int(buf + 2);
+
+
+                        
+
+                    
+                }
+                else if(strcmp(buf, "=") == 0)
+                {
+                    token_buf[token_count].type = EQUAL;
+
+                }
+                 else if(strcmp(buf, "+") == 0)
+                {
+                    token_buf[token_count].type = PLUS;
+
+                }
+                 else if(strcmp(buf, "-") == 0)
+                {
+                    token_buf[token_count].type = MINUS;
+
+                }
+                else if(strcmp(buf, "times") == 0)
+                {
+
+                    token_buf[token_count].type = TIMES;
+
+                }
+                else if(strcmp(buf, "{") == 0)
+                {
+
+                   token_buf[token_count].type = OPEN_BRACE;
+
+                }
+                else if(strcmp(buf, "}") == 0)
+                {
+
+                    token_buf[token_count].type = CLOSE_BRACE;
+
+                }
+                else if(strcmp(buf, "consol") == 0)
+                {
+
+                    token_buf[token_count].type = CONSOL;
+
+                }
+                else
+                {
+                    token_buf[token_count].type = VALUE;
+                    strcpy(token_buf[token_count].value, buf);
+                   
+                }
+
+ 
+
+
+                 
+                 // printf("\nТокен %d: %s | Тип: %d\nValue: %s\n NUM: %d\n",token_count, buf, token_buf[token_count].type, token_buf[token_count].value, token_buf[token_count].num_value);
+
+                 token_count++;
+
+
+              
+                 clear_buffer(buf);
+
+            
+
+                while (line[i] == ' ') i++;
+    }
+              
+            break;
+}
+        current_line++;
+}
+  
+}
+int i = 0;
+while(i < TOK)
+{
+    num ++;
+if (token_buf[i].type == PRINT) 
+{
+    ASTNode node;
+
+    if(token_buf[i+1].type == STR && token_buf[i+2].type == END)
+    {
+        
+    node.type = NODE_PRINT;
+    strcpy(node.name, token_buf[i+1].value);
+    node.extra[0] = 0;
+    i+=3;
+    }
+    else if(token_buf[i+1].type == VALUE && token_buf[i+2].type == END)
+    {
+        
+    node.type = NODE_PRINT;
+    strcpy(node.name, token_buf[i+1].value);
+    node.extra[0] = 1;
+
+
+
+
+
+       i+=3;
+
+    }
+    else
+    {
+        error_print(1);
+    }
+
+    node.extra[1] = node_count;
+    nodes[node_count++] = node;
+
+continue;
+}
+
+if (token_buf[i].type == INT && token_buf[i+1].type == VALUE) 
+{
+    ASTNode node;
+
+    node.type = NODE_INT;
+    strcpy(node.name, token_buf[i+1].value);
+
+    if (token_buf[i+2].type == EQUAL && token_buf[i+3].type == NUM)
+    {
+
+       
+        strcpy(node.value, token_buf[i+3].value);
+        node.num = token_buf[i+3].num_value;
+
+        node.extra[1] = node_count;
+
+        i+=4;
+
+
+    }
+    else if (token_buf[i+2].type == END)
+    {
+      i+=3;
+    }
+    else
+    {
+        error_print(1);
+    }
+ 
+
+    nodes[node_count++] = node;
+
+
+ continue;
+
+}
+
+
+if(token_buf[i].type == VALUE)
+{
+    ASTNode node;
+    strcpy(node.name, token_buf[i].value);
+    node.extra[1] = node_count;
+
+    if (token_buf[i+1].type == EQUAL && token_buf[i+2].type == VALUE && token_buf[i+3].type == END)
+    {
+
+    node.type = EQUAL;
+    strcpy(node.value, token_buf[i+2].value);
+
+
+    i+=4;
+    }
+
+    if (token_buf[i+1].type == PLUS && token_buf[i+2].type == VALUE && token_buf[i+3].type == END)
+    {
+
+    node.type = PLUS;
+    strcpy(node.value, token_buf[i+2].value);
+
+
+    i+=4;
+    }
+
+
+        nodes[node_count++] = node;
+        continue;
+}
+
+
+if(token_buf[i].type == TIMES && token_buf[i+1].type == NUM && token_buf[i+2].type == OPEN_BRACE)
+{
+open_brace++;
+
+    ASTNode node;
+     node.type = NODE_TIMES;
+    node.num = token_buf[i+1].num_value;
+    node.extra[1] = loop_num;
+    node.extra[2] = open_brace;
+
+    i+=3;
+
+     nodes[node_count++] = node;
+    continue;
+
+}
+
+if(token_buf[i].type == CLOSE_BRACE)
+{
+
+
+        ASTNode node;
+    node.type = NODE_END_TIMES;
+    node.extra[1] = loop_num;
+    node.extra[2] = open_brace;
+
+
+
+    i+=1;
+
+     nodes[node_count++] = node;
+     open_brace--;
+         if(open_brace == 0)
+    loop_num++;
+    continue;
+}
+
+
+if(token_buf[i].type == CONSOL && token_buf[i+1].type == STR && token_buf[i+2].type == END)
+{
+
+
+    ASTNode node;
+    node.type = NODE_END_TIMES;
+
+
+     nodes[node_count++] = node;
+
+
+    continue;
+}
+
+   i++;
+}
+
+
+
+
+
+for(int i = 0; i < node_count; i++) 
+{
+    generate_code(&nodes[i], out, name_out);
+}
+
+
+
+
+ fprintf(out,
+                "\njmp exit                 \n"
+
+                "print:                      \n"
+                "push rax                    \n"
+                "push rdi                    \n"
+                "mov rax, 1                  \n"
+                "mov rdi, 1                  \n"
+                "syscall                     \n"
+                "pop rax                     \n"
+                "pop rdi                     \n"
+                "ret                         \n"
+
+                "clear_bufer:                \n"
+                "push rax                    \n"
+                "xor rax, rax                \n"
+                ".loop:                      \n"
+                "mov byte [rsi + rax], 0     \n"
+                "inc rax                     \n"
+                "cmp byte [rsi + rax], 0     \n"
+                "je .done                    \n"
+                "jmp .loop                   \n"
+                ".done:                      \n"
+                "pop rax                     \n"
+                "ret                         \n"
+
+                "num_to_str:                  \n"
+                "mov rcx, 0                   \n"
+                "mov rbx, 10                  \n"
+                ".repeat:                     \n"
+                "xor rdx, rdx                 \n"
+                "div rbx                      \n"
+                "add dl, '0'                  \n"
+                "push rdx                     \n"
+                "inc rcx                      \n"
+                "test rax, rax                \n"
+                "jnz .repeat                  \n"
+                ".print_digits:               \n"
+                "pop rax                      \n"
+                "mov [rdi], al                \n"
+                "inc rdi                      \n"
+                "loop .print_digits           \n"
+                "mov byte [rdi], 0            \n"
+                "ret                          \n"
+
+    );       
+
+
+    fclose(input);
+    fclose(out);
+
+    return 0;
+
+}
